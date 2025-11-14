@@ -81,8 +81,17 @@ app.get('/api/stats', (req, res) => {
 
 // Serve static files in production
 if (NODE_ENV === 'production') {
-  app.use(express.static('dist'));
-  app.get('*', (req, res) => {
+  // Rate limit static files
+  const staticLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 500, // Higher limit for static files
+    message: 'Too many requests, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  
+  app.use(express.static('dist', { maxAge: '1d' }));
+  app.get('*', staticLimiter, (req, res) => {
     if (!req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
       res.sendFile('dist/index.html', { root: '.' });
     }
