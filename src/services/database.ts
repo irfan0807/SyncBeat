@@ -3,9 +3,8 @@ import {
   DatabaseUser,
   DatabaseRoom,
   DatabaseMessage,
-  DatabasePlaybackState,
 } from "../lib/supabase";
-import { User, Room, Message, Track } from "../types";
+import { Message, Track } from "../types";
 
 export class DatabaseService {
   // User operations
@@ -25,8 +24,9 @@ export class DatabaseService {
       if (error) throw error;
 
       return null;
-    } catch (error: any) {
-      console.error("Error creating user:", error.message || error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error creating user:", errorMessage);
       return null;
     }
   }

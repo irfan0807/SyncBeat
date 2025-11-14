@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Track } from '../types';
 import { Play, Pause, Search, Volume2, SkipBack, SkipForward, Music, Shuffle, Repeat, TrendingUp } from 'lucide-react';
 import { useYouTube } from '../hooks/useYouTube';
@@ -31,7 +31,6 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [showPopular, setShowPopular] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
-  const [playerState, setPlayerState] = useState(-1);
   
   const { searchTracks, getPopularTracks } = useYouTube();
 
@@ -105,7 +104,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     }
   };
 
-  const handlePlayerError = (error: any) => {
+  const handlePlayerError = (error: number) => {
     console.error('YouTube player error:', error);
     // Handle different error codes
     switch (error) {

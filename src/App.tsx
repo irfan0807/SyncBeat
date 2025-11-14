@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSocket } from './hooks/useSocket';
 import { DatabaseService } from './services/database';
-import { Room as RoomType, User } from './types';
+import { Room as RoomType, User, Message, Track } from './types';
 import Auth from './components/Auth';
 import Landing from './components/Landing';
 import Room from './components/Room';
@@ -57,7 +57,7 @@ function App() {
   useEffect(() => {
     if (!socket || !currentUser) return;
 
-    const handleRoomCreated = async (data: { roomId: string; room: RoomType; user: any }) => {
+    const handleRoomCreated = async (data: { roomId: string; room: RoomType; user: User }) => {
       // Save room to database
       await DatabaseService.createRoom({
         id: data.roomId,
@@ -70,7 +70,7 @@ function App() {
       setIsLoading(false);
     };
 
-    const handleRoomJoined = async (data: { room: RoomType; user: any }) => {
+    const handleRoomJoined = async (data: { room: RoomType; user: User }) => {
       // Add user to room in database
       await DatabaseService.addRoomMember(data.room.id, currentUser.id);
       
@@ -106,7 +106,7 @@ function App() {
       setCurrentRoom(data.room);
     };
 
-    const handleNewMessage = async (message: any) => {
+    const handleNewMessage = async (message: Message & { roomId: string }) => {
       // Save message to database
       if (currentRoom) {
         await DatabaseService.saveMessage({
@@ -118,7 +118,7 @@ function App() {
       }
     };
 
-    const handleTrackChanged = async (data: { track: any }) => {
+    const handleTrackChanged = async (data: { track: Track | null }) => {
       // Save playback state to database
       if (currentRoom) {
         await DatabaseService.savePlaybackState(
@@ -208,7 +208,7 @@ function App() {
     }
   };
 
-  const handleCreateRoom = (userName: string) => {
+  const handleCreateRoom = () => {
     if (socket && isConnected && currentUser) {
       setIsLoading(true);
       setError('');
@@ -218,7 +218,7 @@ function App() {
     }
   };
 
-  const handleJoinRoom = async (roomId: string, userName: string) => {
+  const handleJoinRoom = async (roomId: string) => {
     if (socket && isConnected && currentUser) {
       // Check if room exists in database
       const room = await DatabaseService.getRoom(roomId);

@@ -5,7 +5,7 @@ import MusicPlayer from './MusicPlayer';
 import ChatPanel from './ChatPanel';
 import MembersList from './MembersList';
 import ConnectionStatus from './ConnectionStatus';
-import { Users, MessageCircle, Music, Copy, Check, LogOut, User } from 'lucide-react';
+import { Users, MessageCircle, Music, Copy, Check, LogOut } from 'lucide-react';
 
 interface RoomProps {
   socket: Socket;
@@ -34,10 +34,8 @@ const Room: React.FC<RoomProps> = ({
   const [showChat, setShowChat] = useState(true);
   const [copied, setCopied] = useState(false);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
-  const [lastSync, setLastSync] = useState<number>(Date.now());
   const [notifications, setNotifications] = useState<string[]>([]);
   
-  const syncTimeoutRef = useRef<NodeJS.Timeout>();
   const positionUpdateRef = useRef<NodeJS.Timeout>();
 
   const isHost = currentUserId === room.hostId;
@@ -182,12 +180,6 @@ const Room: React.FC<RoomProps> = ({
       socket.emit('playback-state', { isPlaying, position });
       setIsPlaying(isPlaying);
       setPosition(position);
-    }
-  };
-
-  const requestSync = () => {
-    if (socket && isConnected) {
-      socket.emit('request-sync');
     }
   };
 

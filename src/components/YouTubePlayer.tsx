@@ -9,14 +9,55 @@ interface YouTubePlayerProps {
   onReady: () => void;
   onStateChange: (state: number) => void;
   onTimeUpdate: (currentTime: number) => void;
-  onError: (error: any) => void;
+  onError: (error: number) => void;
 }
 
 declare global {
   interface Window {
-    YT: any;
+    YT: YTNamespace;
     onYouTubeIframeAPIReady: () => void;
   }
+}
+
+// YouTube API type definitions
+interface YTNamespace {
+  Player: YTPlayerConstructor;
+}
+
+interface YTPlayerConstructor {
+  new(elementId: string | HTMLElement, config: YTPlayerOptions): YTPlayerInstance;
+}
+
+interface YTPlayerOptions {
+  height?: string;
+  width?: string;
+  videoId?: string;
+  events?: {
+    onReady?: (event: YTPlayerEvent) => void;
+    onStateChange?: (event: YTPlayerEvent) => void;
+    onError?: (event: YTErrorEvent) => void;
+  };
+  playerVars?: Record<string, number | string>;
+}
+
+interface YTPlayerInstance {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  setVolume: (volume: number) => void;
+  getCurrentTime: () => number;
+  loadVideoById: (videoId: string) => void;
+  destroy: () => void;
+}
+
+interface YTPlayerEvent {
+  target: YTPlayerInstance;
+  data: number;
+}
+
+interface YTErrorEvent {
+  target: YTPlayerInstance;
+  data: number;
 }
 
 const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
@@ -29,7 +70,7 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   onTimeUpdate,
   onError
 }) => {
-  const playerRef = useRef<any>(null);
+  const playerRef = useRef<YTPlayerInstance | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isAPIReady, setIsAPIReady] = useState(false);
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout>();
@@ -72,15 +113,15 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
         showinfo: 0
       },
       events: {
-        onReady: (event: any) => {
+        onReady: () => {
           console.log('YouTube player ready');
           onReady();
         },
-        onStateChange: (event: any) => {
+        onStateChange: (event: YTPlayerEvent) => {
           onStateChange(event.data);
           
           // Start time updates when playing
-          if (event.data === window.YT.PlayerState.PLAYING) {
+          if (event.data === 1) { // Playing state
             timeUpdateIntervalRef.current = setInterval(() => {
               if (playerRef.current && playerRef.current.getCurrentTime) {
                 const currentTime = playerRef.current.getCurrentTime() * 1000;
@@ -93,7 +134,7 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
             }
           }
         },
-        onError: (event: any) => {
+        onError: (event: YTErrorEvent) => {
           console.error('YouTube player error:', event.data);
           onError(event.data);
         }

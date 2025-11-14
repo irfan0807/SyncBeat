@@ -1,23 +1,38 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Track } from '../types';
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
-export interface YouTubeVideo {
-  id: string;
-  title: string;
-  channelTitle: string;
-  thumbnails: {
-    default: { url: string };
-    medium: { url: string };
-    high: { url: string };
+interface YouTubeSearchItem {
+  id: { videoId: string };
+  snippet: {
+    title: string;
+    channelTitle: string;
+    thumbnails: {
+      default?: { url: string };
+      medium?: { url: string };
+      high?: { url: string };
+    };
   };
-  duration: string;
-  publishedAt: string;
+}
+
+interface YouTubeVideo {
+  id: string;
+  snippet: {
+    title: string;
+    channelTitle: string;
+    thumbnails: {
+      default?: { url: string };
+      medium?: { url: string };
+      high?: { url: string };
+    };
+  };
+  contentDetails: {
+    duration: string;
+  };
 }
 
 export const useYouTube = () => {
-  const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -56,7 +71,7 @@ export const useYouTube = () => {
       }
 
       // Get video details including duration
-      const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
+      const videoIds = searchData.items.map((item: YouTubeSearchItem) => item.id.videoId).join(',');
       const detailsResponse = await fetch(
         `https://www.googleapis.com/youtube/v3/videos?` +
         `part=contentDetails,snippet&id=${videoIds}&key=${YOUTUBE_API_KEY}`
@@ -66,7 +81,7 @@ export const useYouTube = () => {
 
       const detailsData = await detailsResponse.json();
 
-      return detailsData.items.map((video: any) => {
+      return detailsData.items.map((video: YouTubeVideo) => {
         const snippet = video.snippet;
         const duration = parseDuration(video.contentDetails.duration);
         
@@ -127,7 +142,7 @@ export const useYouTube = () => {
 
       const data = await response.json();
 
-      return data.items.map((video: any) => {
+      return data.items.map((video: YouTubeVideo) => {
         const snippet = video.snippet;
         const duration = parseDuration(video.contentDetails.duration);
         
@@ -174,7 +189,6 @@ export const useYouTube = () => {
   };
 
   return {
-    isPlayerReady,
     currentTrack,
     isPlaying,
     position,
