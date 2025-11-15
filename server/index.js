@@ -3,23 +3,100 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
+import rateLimit from 'express-rate-limit';
 
 const app = express();
 const server = createServer(app);
+
+// Environment configuration
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const PORT = process.env.PORT || 3001;
+const CORS_ORIGINS = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  : ['http://localhost:5173'];
+
+// CORS configuration for production
+const corsOptions = {
+  origin: CORS_ORIGINS,
+  methods: ['GET', 'POST'],
+  credentials: true
+};
+
 const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"],
-    credentials: true
-  },
-  transports: ['websocket', 'polling']
+  cors: corsOptions,
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
-app.use(cors({
-  origin: "http://localhost:5173",
-  credentials: true
-}));
-app.use(express.json());
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Rate limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply rate limiting to API routes
+app.use('/api/', apiLimiter);
+
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${req.method} ${req.path} ${res.statusCode} - ${duration}ms`);
+  });
+  next();
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: NODE_ENV,
+    stats: {
+      activeRooms: rooms.size,
+      activeUsers: userSessions.size,
+      activeConnections: io.sockets.sockets.size
+    }
+  });
+});
+
+// API endpoints
+app.get('/api/stats', (req, res) => {
+  res.json({
+    rooms: rooms.size,
+    users: userSessions.size,
+    connections: io.sockets.sockets.size
+  });
+});
+
+// Serve static files in production
+if (NODE_ENV === 'production') {
+  // Rate limit static files
+  const staticLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 500, // Higher limit for static files
+    message: 'Too many requests, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  
+  app.use(express.static('dist', { maxAge: '1d' }));
+  app.get('*', staticLimiter, (req, res) => {
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
+      res.sendFile('dist/index.html', { root: '.' });
+    }
+  });
+}
 
 // Enhanced room management with better state tracking
 const rooms = new Map();
@@ -168,6 +245,34 @@ const stopHeartbeat = (socketId) => {
   }
 };
 
+// Input validation helpers
+const validateRoomData = (data) => {
+  if (!data || typeof data !== 'object') return false;
+  if (!data.userName || typeof data.userName !== 'string') return false;
+  if (data.userName.length < 1 || data.userName.length > 50) return false;
+  return true;
+};
+
+const validateJoinData = (data) => {
+  if (!data || typeof data !== 'object') return false;
+  if (!data.roomId || typeof data.roomId !== 'string') return false;
+  if (!data.userName || typeof data.userName !== 'string') return false;
+  if (data.userName.length < 1 || data.userName.length > 50) return false;
+  if (data.roomId.length !== 6) return false;
+  return true;
+};
+
+const validateMessage = (data) => {
+  if (!data || typeof data !== 'object') return false;
+  if (!data.message || typeof data.message !== 'string') return false;
+  if (data.message.length < 1 || data.message.length > 1000) return false;
+  return true;
+};
+
+const sanitizeString = (str) => {
+  return String(str).trim().substring(0, 1000);
+};
+
 // Enhanced socket connection handling
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id} at ${new Date().toISOString()}`);
@@ -186,14 +291,21 @@ io.on('connection', (socket) => {
   // Enhanced room creation
   socket.on('create-room', (data) => {
     try {
+      // Validate input
+      if (!validateRoomData(data)) {
+        socket.emit('room-error', { message: 'Invalid room data' });
+        return;
+      }
+
+      const userName = sanitizeString(data.userName);
       const roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
-      const room = new Room(roomId, socket.id, data.userName);
-      const user = room.addUser(socket.id, data.userName, socket.id);
+      const room = new Room(roomId, socket.id, userName);
+      const user = room.addUser(socket.id, userName, socket.id);
       
       rooms.set(roomId, room);
       userSessions.set(socket.id, {
         userId: socket.id,
-        userName: data.userName,
+        userName: userName,
         roomId: roomId,
         joinedAt: Date.now(),
         lastPing: Date.now()
@@ -210,7 +322,7 @@ io.on('connection', (socket) => {
       
       socket.emit('room-created', response);
       
-      console.log(`Room ${roomId} created by ${data.userName} (${socket.id})`);
+      console.log(`Room ${roomId} created by ${userName} (${socket.id})`);
     } catch (error) {
       console.error('Error creating room:', error);
       socket.emit('room-error', { message: 'Failed to create room' });
@@ -220,7 +332,14 @@ io.on('connection', (socket) => {
   // Enhanced room joining
   socket.on('join-room', (data) => {
     try {
-      const { roomId, userName } = data;
+      // Validate input
+      if (!validateJoinData(data)) {
+        socket.emit('room-error', { message: 'Invalid join data' });
+        return;
+      }
+
+      const roomId = data.roomId.toUpperCase();
+      const userName = sanitizeString(data.userName);
       const room = rooms.get(roomId);
       
       if (!room) {
@@ -269,6 +388,12 @@ io.on('connection', (socket) => {
   // Enhanced message handling
   socket.on('send-message', (data) => {
     try {
+      // Validate input
+      if (!validateMessage(data)) {
+        socket.emit('message-error', { message: 'Invalid message' });
+        return;
+      }
+
       const session = userSessions.get(socket.id);
       if (!session) {
         socket.emit('message-error', { message: 'Not in a room' });
@@ -296,7 +421,7 @@ io.on('connection', (socket) => {
       const message = room.addMessage({
         userId: socket.id,
         userName: user.name,
-        message: data.message.trim(),
+        message: sanitizeString(data.message),
         type: data.type || 'text'
       });
 
@@ -491,17 +616,47 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000); // Check every hour
 
-// Error handling
+// Enhanced error handling
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
+  // In production, you might want to log to an external service
+  if (NODE_ENV !== 'production') {
+    process.exit(1);
+  }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-const PORT = process.env.PORT || 3001;
+// Graceful shutdown
+const gracefulShutdown = (signal) => {
+  console.log(`\n${signal} received. Starting graceful shutdown...`);
+  
+  // Stop accepting new connections
+  server.close(() => {
+    console.log('HTTP server closed');
+    
+    // Close all socket connections
+    io.close(() => {
+      console.log('Socket.IO server closed');
+      process.exit(0);
+    });
+  });
+
+  // Force shutdown after 10 seconds
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 server.listen(PORT, () => {
-  console.log(`🎵 SyncPlay server running on port ${PORT}`);
+  console.log(`🎵 SyncBeat server running on port ${PORT}`);
   console.log(`🕒 Started at ${new Date().toISOString()}`);
+  console.log(`🌍 Environment: ${NODE_ENV}`);
+  console.log(`🔗 CORS origins:`, CORS_ORIGINS);
 });

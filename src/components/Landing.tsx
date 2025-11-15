@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Music, Users, MessageCircle, Play, Wifi, WifiOff, LogOut, User } from 'lucide-react';
+import { Music, Users, MessageCircle, Play, Wifi, WifiOff, LogOut } from 'lucide-react';
 import { User as UserType } from '../types';
 
 interface LandingProps {
   currentUser: UserType;
-  onCreateRoom: (userName: string) => void;
-  onJoinRoom: (roomId: string, userName: string) => void;
+  onCreateRoom: () => void;
+  onJoinRoom: (roomId: string) => void;
   onLogout: () => void;
   isConnected: boolean;
   isLoading: boolean;
@@ -24,13 +24,13 @@ const Landing: React.FC<LandingProps> = ({
 
   const handleCreateRoom = () => {
     if (isConnected) {
-      onCreateRoom(currentUser.name);
+      onCreateRoom();
     }
   };
 
   const handleJoinRoom = () => {
     if (roomId.trim() && isConnected) {
-      onJoinRoom(roomId.trim().toUpperCase(), currentUser.name);
+      onJoinRoom(roomId.trim().toUpperCase());
     }
   };
 

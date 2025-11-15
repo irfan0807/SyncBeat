@@ -1,6 +1,6 @@
 import React from 'react';
 import { User } from '../types';
-import { Crown, User as UserIcon, X, Wifi, WifiOff } from 'lucide-react';
+import { Crown, X, Wifi, WifiOff } from 'lucide-react';
 
 interface MembersListProps {
   users: User[];
